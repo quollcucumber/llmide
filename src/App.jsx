@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { cpp } from '@codemirror/lang-cpp';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { unifiedMergeView } from '@codemirror/merge';
 import { fixCode, listModels, DEFAULT_MODEL } from './lib/gemini.js';
 import { runCode } from './lib/runners.js';
 import { SAMPLES } from './samples.js';
@@ -38,12 +39,19 @@ export default function App() {
   const key = apiKey || SHARED_KEY;
   const [showSettings, setShowSettings] = useState(!key);
   const [flash, setFlash] = useState(0);
+  const [diffBases, setDiffBases] = useState({});
   const abortRef = useRef(null);
 
   const code = codes[language];
   const stdin = stdins[language];
   const runner = runners[language];
   const setCode = (c) => setCodes((all) => ({ ...all, [language]: c }));
+  const diffBase = diffBases[language];
+  const setDiffBase = (lang, base) => setDiffBases((b) => ({ ...b, [lang]: base }));
+  const extensions = useMemo(() => [
+    LANGS[language].ext,
+    ...(diffBase == null ? [] : [unifiedMergeView({ original: diffBase, mergeControls: false, syntaxHighlightDeletions: true })]),
+  ], [language, diffBase]);
 
   const go = useCallback(async (useAI) => {
     if (busy) return;
@@ -65,6 +73,7 @@ export default function App() {
         if (fixed.code !== code) {
           setHistory((h) => [...h, { language, code }].slice(-50));
           setCode(fixed.code);
+          setDiffBase(language, code);
           setFlash((f) => f + 1);
         }
         source = fixed.code;
@@ -99,6 +108,7 @@ export default function App() {
     setHistory((h) => h.slice(0, -1));
     setLanguage(last.language);
     setCodes((all) => ({ ...all, [last.language]: last.code }));
+    setDiffBase(last.language, undefined);
     setNote(null);
   };
 
@@ -119,6 +129,7 @@ export default function App() {
           <button className="primary" onClick={() => go(true)} disabled={busy} title="Ctrl+Enter">Vibe &amp; Run</button>
           <button onClick={() => go(false)} disabled={busy} title="Ctrl+Shift+Enter">Run as-is</button>
           {busy && <button onClick={() => abortRef.current?.abort()} title="Cancel the Gemini/Wandbox request">Cancel</button>}
+          {diffBase != null && <button onClick={() => setDiffBase(language, undefined)} title="Stop highlighting the AI's edits">Hide changes</button>}
           <button onClick={undo} disabled={busy || !canUndo} title="Restore the code from before the last AI rewrite">Undo AI</button>
           <button className="icon" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
         </div>
@@ -130,7 +141,7 @@ export default function App() {
             value={code}
             onChange={setCode}
             theme={oneDark}
-            extensions={[LANGS[language].ext]}
+            extensions={extensions}
             height="100%"
             style={{ height: '100%' }}
             readOnly={busy}

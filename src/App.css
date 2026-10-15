@@ -57,3 +57,11 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-
   main { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
   .editor { border-right: none; border-bottom: 1px solid var(--border); }
 }
+
+.editor .cm-changedLine { background: rgba(152, 195, 121, 0.12) !important; }
+.editor .cm-changedText { background: rgba(152, 195, 121, 0.35) !important; }
+.editor .cm-deletedChunk { background: rgba(224, 108, 117, 0.14) !important; }
+.editor .cm-deletedChunk del, .editor .cm-deletedText { background: rgba(224, 108, 117, 0.3); text-decoration: line-through; }
+.editor .cm-changeGutter { width: 3px; padding: 0; }
+.editor .cm-changedLineGutter { background: #98c379; }
+.editor .cm-deletedLineGutter { background: #e06c75; }
