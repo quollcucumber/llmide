@@ -59,7 +59,7 @@ export default function App() {
         setNote(null);
         const fixed = await fixCode({
           key, model, language: LANGS[language].label, code, stdin,
-          lastError: lastError[language], signal: abort.signal,
+          lastError: lastError[language], signal: abort.signal, onStatus: setStatus,
         });
         setNote(fixed);
         if (fixed.code !== code) {
@@ -146,7 +146,7 @@ export default function App() {
 
           {note && (
             <div className="panel note">
-              <span className="panel-title">what the AI thinks you meant</span>
+              <span className="panel-title">what {note.model} thinks you meant</span>
               <p className="intent">{note.intent}</p>
               {note.changes.length > 0
                 ? <ul>{note.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
