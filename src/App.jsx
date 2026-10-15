@@ -9,6 +9,7 @@ import { SAMPLES } from './samples.js';
 import './App.css';
 
 const LANGS = { cpp: { label: 'C++', ext: cpp() }, python: { label: 'Python', ext: python() } };
+const SHARED_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 const RUNNERS = { browser: 'In-browser', wandbox: 'Wandbox (real g++/CPython)' };
 
 function useStored(key, initial) {
@@ -34,7 +35,8 @@ export default function App() {
   const [note, setNote] = useState(null);
   const [result, setResult] = useState(null);
   const [lastError, setLastError] = useState({});
-  const [showSettings, setShowSettings] = useState(!apiKey);
+  const key = apiKey || SHARED_KEY;
+  const [showSettings, setShowSettings] = useState(!key);
   const [flash, setFlash] = useState(0);
   const abortRef = useRef(null);
 
@@ -45,7 +47,7 @@ export default function App() {
 
   const go = useCallback(async (useAI) => {
     if (busy) return;
-    if (useAI && !apiKey) { setShowSettings(true); return; }
+    if (useAI && !key) { setShowSettings(true); return; }
     const abort = new AbortController();
     abortRef.current = abort;
     setBusy(true);
@@ -56,7 +58,7 @@ export default function App() {
         setStatus(`${model} is figuring out what you meant…`);
         setNote(null);
         const fixed = await fixCode({
-          key: apiKey, model, language: LANGS[language].label, code, stdin,
+          key, model, language: LANGS[language].label, code, stdin,
           lastError: lastError[language], signal: abort.signal,
         });
         setNote(fixed);
@@ -81,7 +83,7 @@ export default function App() {
       setBusy(false);
       setStatus('');
     }
-  }, [busy, apiKey, code, stdin, language, model, runner, timeLimit, lastError]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [busy, key, code, stdin, language, model, runner, timeLimit, lastError]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e) => {
@@ -171,7 +173,7 @@ export default function App() {
 
       {showSettings && (
         <Settings
-          apiKey={apiKey} setApiKey={setApiKey} model={model} setModel={setModel}
+          apiKey={apiKey} setApiKey={setApiKey} activeKey={key} model={model} setModel={setModel}
           timeLimit={timeLimit} setTimeLimit={setTimeLimit} onClose={() => setShowSettings(false)}
         />
       )}
@@ -192,17 +194,17 @@ function ResultBadge({ r }) {
   return <span className="badges"><span className={`badge ${cls}`}>{label}</span>{times && <span className="muted">{times}</span>}</span>;
 }
 
-function Settings({ apiKey, setApiKey, model, setModel, timeLimit, setTimeLimit, onClose }) {
+function Settings({ apiKey, setApiKey, activeKey, model, setModel, timeLimit, setTimeLimit, onClose }) {
   const [draft, setDraft] = useState(apiKey);
   const [models, setModels] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!activeKey) return;
     let live = true;
-    listModels(apiKey).then((m) => live && setModels(m), (e) => live && setError(e.message));
+    listModels(activeKey).then((m) => live && setModels(m), (e) => live && setError(e.message));
     return () => { live = false; };
-  }, [apiKey]);
+  }, [activeKey]);
 
   const save = () => { setError(''); setApiKey(draft.trim()); };
 
@@ -211,15 +213,17 @@ function Settings({ apiKey, setApiKey, model, setModel, timeLimit, setTimeLimit,
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Settings</h2>
         <label>
-          Gemini API key
+          {SHARED_KEY ? 'Your own Gemini API key (optional)' : 'Gemini API key'}
           <div className="row">
-            <input type="password" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="AIza…" autoFocus />
+            <input type="password" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={SHARED_KEY ? 'Leave empty to use the site’s key' : 'AIza…'} autoFocus={!SHARED_KEY} />
             <button onClick={save} disabled={draft.trim() === apiKey}>Save</button>
+            {SHARED_KEY && apiKey && <button onClick={() => { setDraft(''); setApiKey(''); }}>Use site key</button>}
           </div>
         </label>
         <p className="muted small">
+          {SHARED_KEY && 'This site comes with a shared key, so you only need your own if the shared one hits its rate limit. '}
           Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey</a>.
-          It's stored in this browser only and sent only to Google's Gemini API, along with your code and stdin.
+          Your key is stored in this browser only. Your code and stdin are sent to Google's Gemini API.
         </p>
         <label>
           Model
