@@ -1,0 +1,19 @@
+:root {
+  --bg: #16181d;
+  --panel: #1e2128;
+  --border: #2d313b;
+  --text: #d7dae0;
+  --muted: #8a909c;
+  --accent: #c678dd;
+  --accent-2: #61afef;
+  --good: #98c379;
+  --bad: #e06c75;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select, input, textarea { font: inherit; color: inherit; }
+a { color: var(--accent-2); }
