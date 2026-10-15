@@ -24,6 +24,8 @@ Rules:
 - Don't micro-optimise or restructure code that is already asymptotically optimal.
 - For every optimisation, add a change entry that states the complexity before and after, e.g. "Replaced the summing loop with n*(n+1)/2: O(n) -> O(1)".
 - If the code is already correct and optimal, return it unchanged.
+- Before calling something a bug, trace the code and confirm it actually misbehaves. Never make or report no-op changes (e.g. clearing something that is already cleared, reformatting, renaming). Every entry in changes must change behaviour or complexity.
+- Put problems you can't fix in the code into warnings, e.g. the sample stdin is incomplete or doesn't match the input format the code reads, or the intent is ambiguous. Leave warnings empty if there are none.
 - Fill in obviously missing pieces (includes, input reading, unfinished functions) when intent is clear.
 - If a sample stdin or a previous error is given, use it to infer the intended input format and behaviour.
 - Never add explanations, markdown fences or extra output to the code itself, and do not add prompts like "Enter n:" to the program's output.
@@ -33,17 +35,28 @@ const SCHEMA = {
   type: 'OBJECT',
   properties: {
     intent: { type: 'STRING', description: 'One sentence: what the program is meant to do.' },
-    changes: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Short bullet list of fixes made; empty if none.' },
+    changes: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Short bullet list of fixes/optimisations that change behaviour or complexity; empty if none.' },
+    warnings: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Problems outside the code (e.g. incomplete or mismatched stdin); empty if none.' },
     code: { type: 'STRING', description: 'The full corrected source file.' },
   },
-  required: ['intent', 'changes', 'code'],
-  propertyOrdering: ['intent', 'changes', 'code'],
+  required: ['intent', 'changes', 'warnings', 'code'],
+  propertyOrdering: ['intent', 'changes', 'warnings', 'code'],
 };
 
 // Tried in order when the chosen model is overloaded or rate limited.
-const FALLBACKS = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+// Free-tier quotas are per model (some only 20 requests/day), so a long chain stretches capacity.
+const FALLBACKS = [
+  'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview',
+  'gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest',
+];
 const RETRYABLE = new Set([404, 429, 500, 503]);
 const ATTEMPT_TIMEOUT_MS = 40000;
+const RETRY_DELAY_MS = 2000;
+
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const t = setTimeout(resolve, ms);
+  signal.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+});
 
 export async function fixCode({ key, model, language, code, stdin, lastError, signal, onStatus }) {
   const parts = [`Language: ${language}`, `Source file:\n${code}`];
@@ -55,9 +68,14 @@ export async function fixCode({ key, model, language, code, stdin, lastError, si
     generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
   });
 
+  const attempts = [model, model, ...FALLBACKS.filter((m) => m !== model)];
   let res;
-  for (const m of [...new Set([model, ...FALLBACKS])]) {
-    if (m !== model) onStatus?.(`${model} is busy or unavailable, trying ${m}…`);
+  for (const [i, m] of attempts.entries()) {
+    if (i === 1) {
+      if (res.status !== 500 && res.status !== 503) continue;
+      onStatus?.(`${model} is busy, retrying…`);
+      await sleep(RETRY_DELAY_MS, signal);
+    } else if (i > 1) onStatus?.(`${model} is busy or unavailable, trying ${m}…`);
     try {
       res = await fetch(`${API}/models/${m}:generateContent`, {
         method: 'POST', body,
@@ -66,7 +84,7 @@ export async function fixCode({ key, model, language, code, stdin, lastError, si
       });
     } catch (e) {
       if (e.name !== 'TimeoutError') throw e;
-      res = { ok: false, status: 503, statusText: `${m} timed out`, json: async () => ({}) };
+      res = { ok: false, status: 504, statusText: `${m} timed out`, json: async () => ({}) };
       continue;
     }
     if (res.ok) { model = m; break; }
@@ -77,7 +95,10 @@ export async function fixCode({ key, model, language, code, stdin, lastError, si
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('');
   if (!text) throw new Error(`Gemini returned nothing (${data.candidates?.[0]?.finishReason ?? data.promptFeedback?.blockReason ?? 'unknown reason'})`);
   const out = JSON.parse(text);
-  return { model, intent: out.intent ?? '', changes: out.changes ?? [], code: stripFences(out.code ?? '') };
+  const changes = out.changes ?? [];
+  // Weak models sometimes mangle escapes while claiming no changes, so trust the claim.
+  const fixed = changes.length ? stripFences(out.code ?? '') : code;
+  return { model, intent: out.intent ?? '', changes, warnings: out.warnings ?? [], code: fixed };
 }
 
 function stripFences(code) {

@@ -65,3 +65,5 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-
 .editor .cm-changeGutter { width: 3px; padding: 0; }
 .editor .cm-changedLineGutter { background: #98c379; }
 .editor .cm-deletedLineGutter { background: #e06c75; }
+.note ul.warnings { color: #e5c07b; margin-top: 6px; }
+.note ul.warnings li::marker { content: '⚠ '; }

@@ -162,6 +162,7 @@ export default function App() {
               {note.changes.length > 0
                 ? <ul>{note.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
                 : <p className="muted">No changes needed. Your code was already correct.</p>}
+              {note.warnings?.length > 0 && <ul className="warnings">{note.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
             </div>
           )}
 
